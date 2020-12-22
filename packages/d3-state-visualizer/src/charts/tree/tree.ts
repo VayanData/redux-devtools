@@ -34,7 +34,14 @@ export interface InputOptions {
   widthBetweenNodesCoeff: number;
   transitionDuration: number;
   blinkDuration: number;
+  onClickCircle: (datum: NodeWithId) => boolean;
   onClickText: (datum: NodeWithId) => void;
+  getTooltipText: (datum: NodeWithId) => void;
+  getClassNames: (
+    datum: NodeWithId,
+    index: number,
+    outerIndex: number
+  ) => string;
   tooltipOptions: {
     disabled?: boolean;
     left?: number | undefined;
@@ -91,7 +98,14 @@ interface Options {
   widthBetweenNodesCoeff: number;
   transitionDuration: number;
   blinkDuration: number;
+  onClickCircle: (datum: NodeWithId) => boolean;
   onClickText: () => void;
+  getTooltipText?: (datum: NodeWithId) => void;
+  getClassNames?: (
+    datum: NodeWithId,
+    index: number,
+    outerIndex: number
+  ) => string;
   tooltipOptions: {
     disabled: boolean;
     left: number | undefined;
@@ -145,9 +159,14 @@ const defaultOptions: Options = {
   widthBetweenNodesCoeff: 1,
   transitionDuration: 750,
   blinkDuration: 100,
+  onClickCircle: (datum: NodeWithId) => {
+    return true;
+  },
   onClickText: () => {
     // noop
   },
+  getTooltipText: undefined,
+  getClassNames: undefined,
   tooltipOptions: {
     disabled: false,
     left: undefined,
@@ -183,7 +202,7 @@ interface NodePosition {
 export default function (
   DOMNode: HTMLElement,
   options: Partial<InputOptions> = {}
-) {
+): any {
   const {
     id,
     style,
@@ -199,9 +218,12 @@ export default function (
     state,
     rootKeyName,
     pushMethod,
-    tree,
     tooltipOptions,
+    onClickCircle,
     onClickText,
+    getTooltipText,
+    getClassNames,
+    tree = {},
   } = deepmerge(defaultOptions, options) as Options;
 
   const width = size - margin.left - margin.right;
@@ -236,9 +258,11 @@ export default function (
     .call(
       zoom.on('zoom', () => {
         const { translate, scale } = d3.event as ZoomEvent;
+        const { left, top } = margin;
         vis.attr(
           'transform',
-          `translate(${translate.toString()})scale(${scale})`
+          // eslint-disable-next-line
+          `translate(${translate[0] + left + style.node.radius}, ${ translate[1] + top })scale(${scale})`
         );
       })
     )
@@ -293,14 +317,18 @@ export default function (
     }
   }
 
-  return function renderChart(nextState = tree || state) {
-    data = !tree
-      ? // eslint-disable-next-line @typescript-eslint/ban-types
-        (map2tree(nextState as {}, {
-          key: rootKeyName,
-          pushMethod,
-        }) as NodeWithId)
-      : (nextState as NodeWithId);
+  return function renderChart(nextState = tree || state, isD3Structure = true) {
+    if (!isD3Structure) {
+      data = !tree
+        ? // eslint-disable-next-line @typescript-eslint/ban-types
+          (map2tree(nextState as {}, {
+            key: rootKeyName,
+            pushMethod,
+          }) as NodeWithId)
+        : (nextState as NodeWithId);
+    } else {
+      data = nextState as NodeWithId ;
+    }
 
     if (isEmpty(data) || !data.name) {
       data = ({
@@ -374,7 +402,10 @@ export default function (
         .enter()
         .append('g')
         .attr({
-          class: 'node',
+          class: (d, i, j) => {
+            const classNames = getClassNames?.(d, i, j);
+            return (classNames ? `${classNames} ` : '') + 'node';
+          },
           transform: (d) => {
             const position = findParentNodePosition(
               nodePositionsById,
@@ -405,7 +436,16 @@ export default function (
       if (!tooltipOptions.disabled) {
         nodeEnter.call(
           d3tooltip(d3, 'tooltip', { ...tooltipOptions, root })
-            .text((d, i) => getTooltipString(d, i, tooltipOptions))
+            .text((d, i) => {
+              const { tooltipText } = d;
+              if (tooltipText !== undefined) {
+                return tooltipText;
+              }
+
+              return getTooltipText
+                ? getTooltipText(d)
+                : getTooltipString(d, i, tooltipOptions);
+            })
             .style(tooltipOptions.style)
         );
       }
@@ -421,8 +461,11 @@ export default function (
         })
         .on('click', (clickedNode) => {
           if ((d3.event as Event).defaultPrevented) return;
-          toggleChildren(clickedNode);
-          update();
+          const propagateEvent = onClickCircle(clickedNode);
+          if (propagateEvent !== false) {
+            toggleChildren(clickedNode);
+            update();
+          }
         });
 
       nodeEnterInnerGroup
@@ -527,7 +570,10 @@ export default function (
         .enter()
         .insert('path', 'g')
         .attr({
-          class: 'link',
+          class: (d, i, j) => {
+            const classNames = getClassNames?.(d, i, j);
+            return (classNames ? `${classNames} ` : '') + 'link';
+          },
           d: (d) => {
             const position = findParentNodePosition(
               nodePositionsById,
@@ -575,6 +621,14 @@ export default function (
           },
         })
         .remove();
+
+      if (!tooltipOptions.disabled && getTooltipText) {
+        link.call(
+          d3tooltip(d3, 'tooltip', { ...tooltipOptions, root })
+            .text(getTooltipText)
+            .style(tooltipOptions.style)
+        );
+      }
 
       // delete the old data once it's no longer needed
       node.property('__oldData__', null);
