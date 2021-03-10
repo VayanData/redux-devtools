@@ -10,6 +10,13 @@ import {
 } from './utils';
 import d3tooltip from 'd3tooltip';
 
+interface Pattern {
+  id: string,
+  elementType: string,
+  patternAttrs: { [key: string]: string },
+  elementAttrs: { [key: string]: string },
+}
+
 export interface InputOptions {
   // eslint-disable-next-line @typescript-eslint/ban-types
   state?: {} | null;
@@ -20,6 +27,7 @@ export interface InputOptions {
   pushMethod: 'push' | 'unshift';
   id: string;
   style: { [key: string]: Primitive };
+  patterns: (Pattern)[];
   size: number;
   aspectRatio: number;
   initialZoom: number;
@@ -85,6 +93,7 @@ interface Options {
       fill: string;
     };
   };
+  patterns: (Pattern)[];
   size: number;
   aspectRatio: number;
   initialZoom: number;
@@ -134,7 +143,7 @@ const defaultOptions: Options = {
         collapsed: 'lightsteelblue',
         parent: 'white',
       },
-      radius: 7,
+      radius: 8,
     },
     text: {
       colors: {
@@ -147,6 +156,7 @@ const defaultOptions: Options = {
       fill: 'none',
     },
   },
+  patterns: [],
   size: 500,
   aspectRatio: 1.0,
   initialZoom: 1,
@@ -209,6 +219,7 @@ export default function (
   const {
     id,
     style,
+    patterns,
     size,
     aspectRatio,
     initialZoom,
@@ -276,6 +287,12 @@ export default function (
         margin.top
       }) scale(${initialZoom})`,
     });
+
+  const defsEl = vis.append('defs');
+  patterns.forEach((pattern) => defsEl.append("pattern")
+    .attr({ id: pattern.id, ...pattern.patternAttrs })
+    .append(pattern.elementType)
+    .attr(pattern.elementAttrs));
 
   let layout = d3.layout.tree().size([width, height]);
   let data: NodeWithId;
