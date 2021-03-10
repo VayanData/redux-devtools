@@ -42,6 +42,7 @@ export interface InputOptions {
     index: number,
     outerIndex: number
   ) => string;
+  getNodeTextTransformAttr: (el: SVGGraphicsElement, d: NodeWithId) => string;
   tooltipOptions: {
     disabled?: boolean;
     left?: number | undefined;
@@ -106,6 +107,7 @@ interface Options {
     index: number,
     outerIndex: number
   ) => string;
+  getNodeTextTransformAttr?: (el: SVGGraphicsElement, d: NodeWithId) => string;
   tooltipOptions: {
     disabled: boolean;
     left: number | undefined;
@@ -167,6 +169,7 @@ const defaultOptions: Options = {
   },
   getTooltipText: undefined,
   getClassNames: undefined,
+  getNodeTextTransformAttr: undefined,
   tooltipOptions: {
     disabled: false,
     left: undefined,
@@ -223,6 +226,7 @@ export default function (
     onClickText,
     getTooltipText,
     getClassNames,
+    getNodeTextTransformAttr,
     tree = {},
   } = deepmerge(defaultOptions, options) as Options;
 
@@ -514,6 +518,10 @@ export default function (
         .style('fill-opacity', 1)
         .attr({
           transform: function transform(this: SVGGraphicsElement, d) {
+            if (getNodeTextTransformAttr) {
+              return getNodeTextTransformAttr(this, d)
+            }
+
             const x =
               (d.children || d._children ? -1 : 1) *
               (this.getBBox().width / 2 + style.node.radius + 5);
