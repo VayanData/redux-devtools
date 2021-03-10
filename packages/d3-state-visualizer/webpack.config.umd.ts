@@ -1,7 +1,8 @@
-import * as path from 'path';
+// eslint-disable-next-line no-var
+var path = require('path');
 
-export default (env: { production?: boolean } = {}) => ({
-  mode: env.production ? 'production' : 'development',
+module.exports.default = (env) => ({
+  // mode: env.production ? 'production' : 'development',
   entry: {
     app: ['./src/index'],
   },
@@ -25,4 +26,5 @@ export default (env: { production?: boolean } = {}) => ({
   resolve: {
     extensions: ['.js', '.jsx', '.ts', '.tsx'],
   },
+  externals: ['ramda', 'd3'],
 });
