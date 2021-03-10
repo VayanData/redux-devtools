@@ -36,9 +36,9 @@ export interface InputOptions {
   blinkDuration: number;
   onClickCircle: (datum: NodeWithId) => boolean;
   onClickText: (datum: NodeWithId) => void;
-  getTooltipText: (datum: NodeWithId) => void;
+  getTooltipText: (datum: NodeWithId) => string;
   getClassNames: (
-    datum: NodeWithId,
+    datum: NodeWithId | d3.layout.tree.Link<d3.layout.tree.Node>,
     index: number,
     outerIndex: number
   ) => string;
@@ -100,9 +100,9 @@ interface Options {
   blinkDuration: number;
   onClickCircle: (datum: NodeWithId) => boolean;
   onClickText: () => void;
-  getTooltipText?: (datum: NodeWithId) => void;
+  getTooltipText?: (datum: NodeWithId) => string;
   getClassNames?: (
-    datum: NodeWithId,
+    datum: NodeWithId | d3.layout.tree.Link<d3.layout.tree.Node>,
     index: number,
     outerIndex: number
   ) => string;
@@ -327,7 +327,7 @@ export default function (
           }) as NodeWithId)
         : (nextState as NodeWithId);
     } else {
-      data = nextState as NodeWithId ;
+      data = nextState as NodeWithId;
     }
 
     if (isEmpty(data) || !data.name) {
