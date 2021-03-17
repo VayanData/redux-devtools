@@ -2,19 +2,19 @@ import d3, { ZoomEvent, Primitive } from 'd3';
 import { isEmpty } from 'ramda';
 import map2tree from 'map2tree';
 import deepmerge from 'deepmerge';
+import d3tooltip from 'd3tooltip';
 import {
   getTooltipString,
   toggleChildren,
   visit,
   getNodeGroupByDepthCount,
 } from './utils';
-import d3tooltip from 'd3tooltip';
 
 interface Pattern {
-  id: string,
-  elementType: string,
-  patternAttrs: { [key: string]: string },
-  elementAttrs: { [key: string]: string },
+  id: string;
+  elementType: string;
+  patternAttrs: { [key: string]: string };
+  elementAttrs: { [key: string]: string };
 }
 
 export interface InputOptions {
@@ -22,12 +22,11 @@ export interface InputOptions {
   state?: {} | null;
   // eslint-disable-next-line @typescript-eslint/ban-types
   tree?: NodeWithId | {};
-
   rootKeyName: string;
   pushMethod: 'push' | 'unshift';
   id: string;
   style: { [key: string]: Primitive };
-  patterns: (Pattern)[];
+  patterns: Pattern[];
   size: number;
   aspectRatio: number;
   initialZoom: number;
@@ -69,7 +68,6 @@ interface Options {
   state?: {} | null;
   // eslint-disable-next-line @typescript-eslint/ban-types
   tree?: NodeWithId | {};
-
   rootKeyName: string;
   pushMethod: 'push' | 'unshift';
   id: string;
@@ -197,6 +195,7 @@ export interface NodeWithId {
   children?: NodeWithId[] | null;
   _children?: NodeWithId[] | null;
   value?: unknown;
+  direction?: number;
   id: string;
 
   parent?: NodeWithId;
@@ -210,6 +209,7 @@ interface NodePosition {
   id: string;
   x: number | undefined;
   y: number | undefined;
+  direction?: number;
 }
 
 export default function (
@@ -241,6 +241,7 @@ export default function (
     tree = {},
   } = deepmerge(defaultOptions, options) as Options;
 
+  let data: NodeWithId;
   const width = size - margin.left - margin.right;
   const height = size * aspectRatio - margin.top - margin.bottom;
   const fullWidth = size;
@@ -285,17 +286,19 @@ export default function (
     .attr({
       transform: `translate(${margin.left + style.node.radius}, ${
         margin.top
-      }) scale(${initialZoom})`,
+      }) scale(${initialZoom})`
     });
 
   const defsEl = vis.append('defs');
-  patterns.forEach((pattern) => defsEl.append("pattern")
-    .attr({ id: pattern.id, ...pattern.patternAttrs })
-    .append(pattern.elementType)
-    .attr(pattern.elementAttrs));
+  patterns.forEach((pattern) =>
+    defsEl
+      .append('pattern')
+      .attr({ id: pattern.id, ...pattern.patternAttrs })
+      .append(pattern.elementType)
+      .attr(pattern.elementAttrs)
+  );
 
   let layout = d3.layout.tree().size([width, height]);
-  let data: NodeWithId;
 
   if (isSorted) {
     layout.sort((a, b) =>
@@ -362,8 +365,8 @@ export default function (
     let maxLabelLength = 0;
 
     // nodes are assigned with string ids, which reflect their location
-    // within the hierarcy; e.g. "root|branch|subBranch|subBranch[0]|property"
-    // top-level elemnt always has id "root"
+    // within the hierarchy; e.g. "root|branch|subBranch|subBranch[0]|property"
+    // top-level element always has id "root"
     visit(
       data,
       (node) => {
@@ -386,21 +389,61 @@ export default function (
       const diagonal = d3.svg
         .diagonal<NodePosition>()
         .projection((d) => [d.y!, d.x!]);
+
       // set tree dimensions and spacing between branches and nodes
       const maxNodeCountByLevel = Math.max(...getNodeGroupByDepthCount(data));
-
-      layout = layout.size([
-        maxNodeCountByLevel * 25 * heightBetweenNodesCoeff,
-        width,
-      ]);
 
       const nodes = layout.nodes(data as d3.layout.tree.Node) as NodeWithId[];
       const links = layout.links(nodes as d3.layout.tree.Node[]);
 
-      nodes.forEach(
-        (node) =>
-          (node.y = node.depth! * (maxLabelLength * 7 * widthBetweenNodesCoeff))
+      const nodesByLevelAndDepth = nodes.reduce(
+        (
+          acc: Record<number, Record<number, NodeWithId[]>>,
+          node: NodeWithId
+        ) => {
+          const { direction = 1, depth = 0 } = node;
+
+          acc[direction] = acc[direction] || {};
+          acc[direction][depth] = acc[direction][depth] || [];
+          acc[direction][depth].push(node);
+          return acc;
+        },
+        {}
       );
+
+      let maxNodeLengthInDepth = 0;
+
+      for (const nodesInTree of Object.values(nodesByLevelAndDepth)) {
+        for (const nodesInDepth of Object.values(nodesInTree)) {
+          const nodeLength = nodesInDepth.length;
+          if (nodeLength > maxNodeLengthInDepth) {
+            maxNodeLengthInDepth = nodeLength;
+          }
+        }
+      }
+
+      const heightLayout = maxNodeLengthInDepth * 25 * heightBetweenNodesCoeff;
+
+      layout = layout.size([
+        maxNodeCountByLevel * 25 * heightBetweenNodesCoeff,
+        heightLayout,
+      ]);
+
+      nodes.forEach((node) => {
+        const { direction = 1, depth = 0 } = node;
+
+        node.y =
+          direction * depth * (maxLabelLength * 7 * widthBetweenNodesCoeff);
+
+        const nodesSize = nodesByLevelAndDepth[direction][depth].length;
+        const nodeIndex =
+          nodesByLevelAndDepth[direction][depth].indexOf(node) || 0;
+
+        node.x =
+          depth === 0
+            ? heightLayout / 2
+            : ((nodeIndex + 1) * heightLayout) / (nodesSize + 1);
+      });
 
       const nodePositions = nodes.map((n) => ({
         parentId: n.parent && n.parent.id,
@@ -408,6 +451,7 @@ export default function (
         x: n.x,
         y: n.y,
       }));
+
       const nodePositionsById: { [nodeId: string]: NodePosition } = {};
       nodePositions.forEach((node) => (nodePositionsById[node.id] = node));
 
@@ -419,13 +463,14 @@ export default function (
           nodes,
           (d) => d.id || (d.id = (++nodeIndex as unknown) as string)
         );
+
       const nodeEnter = node
         .enter()
         .append('g')
         .attr({
           class: (d, i, j) => {
-            const classNames = getClassNames?.(d, i, j);
-            return (classNames ? `${classNames} ` : '') + 'node';
+            const classNames = getClassNames?.(d, i, j) || '';
+            return [classNames, 'node'].filter(Boolean).join(' ');
           },
           transform: (d) => {
             const position = findParentNodePosition(
@@ -433,10 +478,11 @@ export default function (
               d.id,
               (n) => !!previousNodePositionsById[n.id]
             );
+
             const previousPosition =
               (position && previousNodePositionsById[position.id]) ||
               previousNodePositionsById.root;
-            return `translate(${previousPosition.y!},${previousPosition.x!})`;
+            return `translate(${previousPosition.y!}, ${previousPosition.x!})`;
           },
         })
         .style({
@@ -536,13 +582,15 @@ export default function (
         .attr({
           transform: function transform(this: SVGGraphicsElement, d) {
             if (getNodeTextTransformAttr) {
-              return getNodeTextTransformAttr(this, d)
+              return getNodeTextTransformAttr(this, d);
             }
 
+            const { direction = 1 } = d;
             const x =
               (d.children || d._children ? -1 : 1) *
               (this.getBBox().width / 2 + style.node.radius + 5);
-            return `translate(${x},0)`;
+
+            return `translate(${direction * x}, 0)`;
           },
         });
 
@@ -596,8 +644,8 @@ export default function (
         .insert('path', 'g')
         .attr({
           class: (d, i, j) => {
-            const classNames = getClassNames?.(d, i, j);
-            return (classNames ? `${classNames} ` : '') + 'link';
+            const classNames = getClassNames?.(d, i, j) || '';
+            return [classNames, 'link'].filter(Boolean).join(' ');
           },
           d: (d) => {
             const position = findParentNodePosition(
@@ -608,6 +656,7 @@ export default function (
             const previousPosition =
               (position && previousNodePositionsById[position.id]) ||
               previousNodePositionsById.root;
+
             return diagonal({
               source: previousPosition,
               target: previousPosition,

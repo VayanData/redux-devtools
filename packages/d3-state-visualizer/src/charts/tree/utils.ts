@@ -50,7 +50,7 @@ export function visit(
   }
 }
 
-export function getNodeGroupByDepthCount(rootNode: NodeWithId) {
+export function getNodeGroupByDepthCount(rootNode: NodeWithId): number[] {
   const nodeGroupByDepthCount = [1];
 
   const traverseFrom = function traverseFrom(node: NodeWithId, depth = 0) {
